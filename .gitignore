@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.venv/
+venv/
+
+# 작업 폴더 (캡처 중간 산출물)
+_work/
+test_run/
+test_output*.pptx
+test_output*.pdf
+_ui_screens/
+_v*_slides/
+
+# 로컬 상태
+_history.json
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# 임시 / 백업
+*.tmp
+*.bak
+~$*
+
+# 개발용 탐색 스크립트
+probe*.py
+probe_out/
+_uitest.py
