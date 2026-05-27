@@ -715,12 +715,13 @@ def build_pptx(
             _add_header(s, prs, HEADER_TEXT_RIGHT_LANDING_PC)
             _add_image_centered(s, slice_path, top_emu=650000)
 
-    # ---- MO: (검색결과) → 상세 5장 그리드 → 안내 5장 그리드 ----
+    # ---- MO: (검색결과) → 상세 5장 그리드 → 랜딩 페이지 5장 그리드 ----
+    # 검색결과 OneBox 의 2장 분할은 모바일 비율(세로 길쭉)이라
+    # 한 슬라이드에 좌우 나란히 배치
     if search_mo and search_mo.get("slides"):
-        for slice_path in search_mo["slides"]:
-            s = prs.slides.add_slide(blank_layout)
-            _add_header(s, prs, HEADER_TEXT_RIGHT_SEARCH_MO)
-            _add_image_centered(s, slice_path, top_emu=650000)
+        s = prs.slides.add_slide(blank_layout)
+        _add_header(s, prs, HEADER_TEXT_RIGHT_SEARCH_MO)
+        _add_image_grid(s, search_mo["slides"], top_emu=700000)
 
     mo_slices = mo["slides"]
     for i in range(0, len(mo_slices), slides_per_mo_grid):
