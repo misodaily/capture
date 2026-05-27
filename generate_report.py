@@ -72,9 +72,9 @@ SEARCH_MO_VIEWPORT = (412, 915)
 HEADER_TEXT_RIGHT_SEARCH_PC = "네이버 신용카드 검색결과_PC"
 HEADER_TEXT_RIGHT_SEARCH_MO = "네이버 신용카드 검색결과_MO"
 
-# 신한카드 자체 안내 페이지 (PC/MO 동일 URL → 디바이스별로 다른 레이아웃)
-HEADER_TEXT_RIGHT_LANDING_PC = "신한카드 안내 페이지_PC"
-HEADER_TEXT_RIGHT_LANDING_MO = "신한카드 안내 페이지_MO"
+# 신한카드 자체 랜딩 페이지 (PC/MO 동일 URL → 디바이스별로 다른 레이아웃)
+HEADER_TEXT_RIGHT_LANDING_PC = "신한카드 랜딩 페이지_PC"
+HEADER_TEXT_RIGHT_LANDING_MO = "신한카드 랜딩 페이지_MO"
 
 
 # ---- Web capture ----------------------------------------------------------
@@ -373,10 +373,10 @@ def capture_search_onebox(url: str, work: Path, is_mobile: bool = False) -> dict
     return {"slides": parts, "full": full, "is_mobile": is_mobile}
 
 
-# ---- 신한카드 자체 안내 페이지 캡처 ---------------------------------------
+# ---- 신한카드 자체 랜딩 페이지 캡처 ---------------------------------------
 
 def capture_landing(url: str, work: Path, is_mobile: bool = False) -> dict:
-    """신한카드 자체 카드 안내 페이지(shinhancard.com 등)를 풀페이지 캡처.
+    """신한카드 자체 랜딩 페이지(shinhancard.com 등)를 풀페이지 캡처.
     - PC/MO 동일 URL 을 받지만 디바이스별 viewport/UA 로 따로 캡처.
     - 본문 캡처와 동일하게 풀폭 슬라이스 (PC 989px / MO 874px).
     - fixed/sticky 변환은 `_capture_tall` 내부에서 처리.
@@ -592,22 +592,22 @@ def build_pptx(
     landing_mo: dict | None = None,
     slides_per_mo_grid: int = 5, **_ignored,
 ) -> Path:
-    """PC, MO (+ 선택적 검색결과, 안내페이지) 캡처를 PPT 로 조립.
+    """PC, MO (+ 선택적 검색결과, 랜딩페이지) 캡처를 PPT 로 조립.
 
     슬라이드 순서:
       [PC 검색결과 OneBox 2장]   ← search_pc
       [PC 상세 페이지 슬라이스]
-      [PC 안내 페이지 슬라이스]  ← landing_pc (PC 섹션 맨 끝)
+      [PC 랜딩 페이지 슬라이스]  ← landing_pc (PC 섹션 맨 끝)
       [MO 검색결과 OneBox 2장]   ← search_mo
       [MO 상세 페이지 5장 그리드]
-      [MO 안내 페이지 5장 그리드] ← landing_mo (MO 섹션 맨 끝)
+      [MO 랜딩 페이지 5장 그리드] ← landing_mo (MO 섹션 맨 끝)
     """
     prs = Presentation()
     prs.slide_width = SLIDE_W_EMU
     prs.slide_height = SLIDE_H_EMU
     blank_layout = prs.slide_layouts[6]
 
-    # ---- PC: (검색결과) → 상세 → 안내 ----
+    # ---- PC: (검색결과) → 상세 → 랜딩 ----
     if search_pc and search_pc.get("slides"):
         for slice_path in search_pc["slides"]:
             s = prs.slides.add_slide(blank_layout)
@@ -675,7 +675,7 @@ def main():
     ap.add_argument("--search-mo", default=None, dest="search_mo",
                     help="(선택) MO 검색결과 URL (m.search.naver.com) — 카드 OneBox 캡처")
     ap.add_argument("--landing", default=None,
-                    help="(선택) 신한카드 자체 안내 페이지 URL — PC/MO 둘 다 캡처")
+                    help="(선택) 신한카드 자체 랜딩 페이지 URL — PC/MO 둘 다 캡처")
     ap.add_argument("--card", default="신한카드 Deep Once", help="카드명 (출력 파일명/타이틀용)")
     ap.add_argument(
         "--out",

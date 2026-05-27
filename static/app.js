@@ -64,6 +64,52 @@ document.querySelectorAll('[data-paste]').forEach((btn) => {
   });
 });
 
+// ===== URL 도메인 실시간 검증 =====
+// data-expect 가 있는 input 은 입력 시 즉시 검사:
+//   - 비어 있으면 OK
+//   - 값에 data-expect 포함 안 됨 → 경고 (orange) — "다른 URL일 가능성"
+//   - data-expect-not 에 매칭 → 더 강한 경고 (red) — 다른 디바이스 URL을 잘못 넣음
+function _validateUrlInput(input) {
+  const v = (input.value || '').trim();
+  const expect = input.dataset.expect || '';
+  const expectNot = input.dataset.expectNot || '';
+  const label = input.dataset.expectLabel || '';
+  const warn = document.querySelector(`.field-warn[data-warn-for="${input.id}"]`);
+
+  input.classList.remove('input-mismatch', 'input-error');
+  if (!warn) return true;
+  warn.hidden = true;
+  warn.classList.remove('error');
+
+  if (!v) return true;
+  if (!/^https?:\/\//i.test(v)) {
+    warn.textContent = 'URL 은 http:// 또는 https:// 로 시작해야 합니다.';
+    warn.hidden = false;
+    warn.classList.add('error');
+    input.classList.add('input-error');
+    return false;
+  }
+  if (expectNot && v.includes(expectNot)) {
+    warn.textContent = `${label} 칸인데 다른 디바이스(${expectNot}) URL이 들어왔습니다. 확인이 필요합니다.`;
+    warn.hidden = false;
+    warn.classList.add('error');
+    input.classList.add('input-error');
+    return false;
+  }
+  if (expect && expect !== 'http' && !v.includes(expect)) {
+    warn.textContent = `${label} URL은 보통 "${expect}" 도메인입니다. 입력하신 URL이 맞는지 확인해 주세요.`;
+    warn.hidden = false;
+    input.classList.add('input-mismatch');
+    return false;
+  }
+  return true;
+}
+
+document.querySelectorAll('input[data-expect]').forEach((input) => {
+  input.addEventListener('input', () => _validateUrlInput(input));
+  input.addEventListener('blur', () => _validateUrlInput(input));
+});
+
 // ===== Auto-fill card name from PC URL =====
 let autoFillTimer = null;
 function autoExtractCardName() {
@@ -123,8 +169,29 @@ async function startGeneration() {
     return;
   }
   if (landing_url && !/^https?:\/\//i.test(landing_url)) {
-    toast('안내 페이지 URL 은 http:// 또는 https:// 로 시작해야 합니다.', 'error');
+    toast('랜딩 페이지 URL 은 http:// 또는 https:// 로 시작해야 합니다.', 'error');
     return;
+  }
+
+  // 모든 검증 입력을 다시 한 번 평가 — error 가 있으면 진행 차단, mismatch 는 경고만
+  const allInputs = document.querySelectorAll('input[data-expect]');
+  let hasError = false;
+  let mismatchCount = 0;
+  allInputs.forEach((inp) => {
+    const ok = _validateUrlInput(inp);
+    if (!ok && inp.classList.contains('input-error')) hasError = true;
+    if (!ok && inp.classList.contains('input-mismatch')) mismatchCount += 1;
+  });
+  if (hasError) {
+    toast('잘못된 도메인의 URL이 있습니다. 빨간 표시된 칸을 확인해 주세요.', 'error');
+    return;
+  }
+  if (mismatchCount > 0) {
+    const proceed = confirm(
+      `예상과 다른 도메인의 URL이 ${mismatchCount}개 있습니다.\n` +
+      `(주황색으로 표시됨)\n그래도 진행하시겠습니까?`
+    );
+    if (!proceed) return;
   }
 
   // 패널 초기화
@@ -228,10 +295,10 @@ function showResult(j) {
   const meta = [];
   if (j.pc_slides !== undefined) meta.push(`PC ${j.pc_slides}장`);
   if (j.search_pc_slides) meta.push(`PC 검색 ${j.search_pc_slides}장`);
-  if (j.landing_pc_slides) meta.push(`PC 안내 ${j.landing_pc_slides}장`);
+  if (j.landing_pc_slides) meta.push(`PC 랜딩 ${j.landing_pc_slides}장`);
   if (j.mo_slides !== undefined) meta.push(`MO ${j.mo_slides}장`);
   if (j.search_mo_slides) meta.push(`MO 검색 ${j.search_mo_slides}장`);
-  if (j.landing_mo_slides) meta.push(`MO 안내 ${j.landing_mo_slides}장`);
+  if (j.landing_mo_slides) meta.push(`MO 랜딩 ${j.landing_mo_slides}장`);
   els.resultMeta.textContent = meta.join(' · ');
   els.downloadBtn.href = `/api/download/${currentJobId}`;
   toast('생성 완료!', 'success');

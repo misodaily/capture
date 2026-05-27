@@ -128,11 +128,11 @@ def _run_job(
         landing_pc_data = None
         landing_mo_data = None
         if landing_url:
-            _update(job_id, step="안내 페이지 캡처 중 (PC)...", progress=75)
+            _update(job_id, step="랜딩 페이지 캡처 중 (PC)...", progress=75)
             landing_pc_data = generate_report.capture_landing(
                 landing_url, work / "landing_pc", is_mobile=False
             )
-            _update(job_id, step="안내 페이지 캡처 중 (MO)...", progress=83)
+            _update(job_id, step="랜딩 페이지 캡처 중 (MO)...", progress=83)
             landing_mo_data = generate_report.capture_landing(
                 landing_url, work / "landing_mo", is_mobile=True
             )
@@ -204,7 +204,7 @@ def api_generate():
     if search_mo_url and "m.search.naver.com" not in search_mo_url:
         return jsonify({"error": "MO 검색결과 URL 은 m.search.naver.com 도메인이어야 합니다."}), 400
     if landing_url and not landing_url.startswith(("http://", "https://")):
-        return jsonify({"error": "안내 페이지 URL 은 http:// 또는 https:// 로 시작해야 합니다."}), 400
+        return jsonify({"error": "랜딩 페이지 URL 은 http:// 또는 https:// 로 시작해야 합니다."}), 400
 
     job_id = uuid.uuid4().hex[:12]
     with JOBS_LOCK:
