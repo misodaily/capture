@@ -40,22 +40,9 @@
             <header class="device-head">
               <span class="device-tag pc">PC</span>
               <span class="device-title">PC URL 모음</span>
-              <span class="device-sub">상세 · 검색결과 · 랜딩 페이지</span>
+              <span class="device-sub">검색결과 · 상세 · 랜딩 페이지</span>
             </header>
             <div class="device-body">
-              <div class="field">
-                <label>
-                  <span class="lbl">카드 상세 URL <span class="req">*</span></span>
-                  <span class="hint">card-search.naver.com/item?cardAdId=...</span>
-                </label>
-                <div class="input-row">
-                  <input type="url" id="pcUrl" name="pc_url"
-                         data-expect="card-search.naver.com" data-expect-not="m-card-search.naver.com" data-expect-label="PC 카드 상세"
-                         placeholder="https://card-search.naver.com/item?cardAdId=..." required />
-                  <button type="button" class="btn-ghost" data-paste="pcUrl" title="클립보드 붙여넣기">붙여넣기</button>
-                </div>
-                <div class="field-warn" data-warn-for="pcUrl" hidden></div>
-              </div>
               <div class="field">
                 <label>
                   <span class="lbl">검색결과 URL <span class="opt">선택</span></span>
@@ -68,6 +55,19 @@
                   <button type="button" class="btn-ghost" data-paste="searchPcUrl" title="클립보드 붙여넣기">붙여넣기</button>
                 </div>
                 <div class="field-warn" data-warn-for="searchPcUrl" hidden></div>
+              </div>
+              <div class="field">
+                <label>
+                  <span class="lbl">카드 상세 URL <span class="req">*</span></span>
+                  <span class="hint">card-search.naver.com/item?cardAdId=...</span>
+                </label>
+                <div class="input-row">
+                  <input type="url" id="pcUrl" name="pc_url"
+                         data-expect="card-search.naver.com" data-expect-not="m-card-search.naver.com" data-expect-label="PC 카드 상세"
+                         placeholder="https://card-search.naver.com/item?cardAdId=..." required />
+                  <button type="button" class="btn-ghost" data-paste="pcUrl" title="클립보드 붙여넣기">붙여넣기</button>
+                </div>
+                <div class="field-warn" data-warn-for="pcUrl" hidden></div>
               </div>
               <div class="field">
                 <label>
@@ -90,22 +90,9 @@
             <header class="device-head">
               <span class="device-tag mo">MO</span>
               <span class="device-title">MO URL 모음</span>
-              <span class="device-sub">상세 · 검색결과</span>
+              <span class="device-sub">검색결과 · 상세</span>
             </header>
             <div class="device-body">
-              <div class="field">
-                <label>
-                  <span class="lbl">카드 상세 URL <span class="req">*</span></span>
-                  <span class="hint">m-card-search.naver.com/item?cardAdId=...</span>
-                </label>
-                <div class="input-row">
-                  <input type="url" id="moUrl" name="mo_url"
-                         data-expect="m-card-search.naver.com" data-expect-label="MO 카드 상세"
-                         placeholder="https://m-card-search.naver.com/item?cardAdId=..." required />
-                  <button type="button" class="btn-ghost" data-paste="moUrl" title="클립보드 붙여넣기">붙여넣기</button>
-                </div>
-                <div class="field-warn" data-warn-for="moUrl" hidden></div>
-              </div>
               <div class="field">
                 <label>
                   <span class="lbl">검색결과 URL <span class="opt">선택</span></span>
@@ -118,6 +105,19 @@
                   <button type="button" class="btn-ghost" data-paste="searchMoUrl" title="클립보드 붙여넣기">붙여넣기</button>
                 </div>
                 <div class="field-warn" data-warn-for="searchMoUrl" hidden></div>
+              </div>
+              <div class="field">
+                <label>
+                  <span class="lbl">카드 상세 URL <span class="req">*</span></span>
+                  <span class="hint">m-card-search.naver.com/item?cardAdId=...</span>
+                </label>
+                <div class="input-row">
+                  <input type="url" id="moUrl" name="mo_url"
+                         data-expect="m-card-search.naver.com" data-expect-label="MO 카드 상세"
+                         placeholder="https://m-card-search.naver.com/item?cardAdId=..." required />
+                  <button type="button" class="btn-ghost" data-paste="moUrl" title="클립보드 붙여넣기">붙여넣기</button>
+                </div>
+                <div class="field-warn" data-warn-for="moUrl" hidden></div>
               </div>
               <div class="field-info">
                 <span class="info-dot">i</span>
