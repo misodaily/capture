@@ -126,7 +126,11 @@ def _capture_tall(
     누락 없는 풀페이지 캡처:
     1) fixed/sticky 처리:
        - hide_fixed=False (기본): absolute 로 변환 (stitching 시 중복 캡처 방지)
-       - hide_fixed=True: display:none 으로 완전 제거 (sticky CTA 가 본문을 가리는 경우)
+       - hide_fixed=True (CTA 가 본문 위에 떠 있는 페이지):
+         가장 큰 fixed 컨테이너(=본문 wrapper 가능성 높음)는 absolute 만 적용,
+         그 외 작은 fixed(CTA·헤더·팝업 등)는 display:none.
+         (이전 일괄 display:none 은 본문 wrapper 까지 사라뜨려 캡처가 비는
+          페이지가 있어 분기로 처리)
     2) lazy-load 트리거 (페이지 하단까지 한 번 스크롤)
     3) 최상단으로 복귀 후 `full_page=True` 로 캡처
     """
@@ -136,10 +140,26 @@ def _capture_tall(
 
     # fixed/sticky 처리
     if hide_fixed:
+        # 가장 큰 fixed/sticky 요소(=본문 wrapper) 식별 → absolute 만 적용
+        # 나머지(작은 CTA, 헤더, 팝업) → display:none
         page.evaluate("""() => {
+            const candidates = [];
             document.querySelectorAll('*').forEach(el => {
                 const cs = getComputedStyle(el);
                 if (cs.position === 'fixed' || cs.position === 'sticky') {
+                    const r = el.getBoundingClientRect();
+                    candidates.push({ el, area: Math.max(0, r.width) * Math.max(0, r.height) });
+                }
+            });
+            candidates.sort((a, b) => b.area - a.area);
+            // 가장 큰 것 (영역이 viewport 의 30% 이상이면 본문 wrapper 로 간주)
+            const vp = window.innerWidth * window.innerHeight;
+            const mainEl = (candidates[0] && candidates[0].area > vp * 0.3)
+                ? candidates[0].el : null;
+            candidates.forEach(({el}) => {
+                if (el === mainEl) {
+                    el.style.setProperty('position', 'absolute', 'important');
+                } else {
                     el.style.setProperty('display', 'none', 'important');
                 }
             });
