@@ -180,30 +180,48 @@ def _capture_tall(
 def _slice_full_page(
     full_path: str, slice_h: int, overlap: int, out_dir: Path, prefix: str
 ) -> List[Path]:
-    """긴 전체 페이지 스크린샷을 슬라이드 단위로 자른다 (겹침 포함)."""
+    """긴 전체 페이지 스크린샷을 슬라이드 단위로 자른다 (겹침 포함).
+
+    마지막 조각이 짧을 때:
+      - 컨텐츠 높이 ≥ slice_h × 5% 이면 → 그대로 사용 + 아래에 흰 패딩
+        (이전 슬라이스와의 overlap 은 정상 overlap 만큼만 — 중복 없음)
+      - 컨텐츠 높이 < slice_h × 5% 이면 → 이전 슬라이스 overlap 안에
+        이미 들어가 있다고 보고 슬라이스 생성을 생략.
+
+    이전 구현은 짧은 마지막 조각을 "위로 당겨" slice_h 만큼 확보했는데,
+    이게 직전 슬라이스와 큰 영역(수백 px)이 겹쳐 사실상 같은 화면이
+    두 번 캡처되는 문제가 있었음.
+    """
     img = Image.open(full_path)
     W, H = img.size
     step = slice_h - overlap
-    n = max(1, math.ceil((H - overlap) / step))
+    if step <= 0:
+        step = slice_h
+    MIN_CONTENT_RATIO = 0.05  # 마지막 조각의 컨텐츠가 5% 미만이면 생략
+
     paths: List[Path] = []
-    for i in range(n):
-        top = i * step
+    top = 0
+    idx = 0
+    while top < H:
         bottom = min(top + slice_h, H)
-        # 마지막 조각이 너무 짧으면 위로 당겨서 slice_h 확보
-        if bottom - top < slice_h * 0.5 and i > 0:
-            top = max(0, H - slice_h)
-            bottom = H
+        content_h = bottom - top
+        # 마지막 조각이 거의 빈 영역만이면 (직전 슬라이스 overlap 에 이미 포함) 생략
+        if idx > 0 and content_h < slice_h * MIN_CONTENT_RATIO:
+            break
+
+        idx += 1
         crop = img.crop((0, top, W, bottom))
-        # 정확히 slice_h 가 안 되면 캔버스에 붙여서 패딩
         if crop.size[1] < slice_h:
             canvas = Image.new("RGB", (W, slice_h), (255, 255, 255))
             canvas.paste(crop, (0, 0))
             crop = canvas
-        p = out_dir / f"{prefix}_{i + 1:02d}.png"
+        p = out_dir / f"{prefix}_{idx:02d}.png"
         crop.save(p, "PNG", optimize=True)
         paths.append(p)
+
         if bottom >= H:
             break
+        top += step
     return paths
 
 
