@@ -118,28 +118,41 @@ def _full_page_height(page: Page) -> int:
     return page.evaluate("() => document.documentElement.scrollHeight")
 
 
-def _capture_tall(page: Page, out_path: Path, base_w: int, max_h: int = 16000) -> int:
+def _capture_tall(
+    page: Page, out_path: Path, base_w: int, max_h: int = 16000,
+    hide_fixed: bool = False,
+) -> int:
     """
     누락 없는 풀페이지 캡처:
-    1) fixed/sticky → absolute (Playwright stitching 시 매 viewport 마다 중복 캡처되는 문제 해결)
+    1) fixed/sticky 처리:
+       - hide_fixed=False (기본): absolute 로 변환 (stitching 시 중복 캡처 방지)
+       - hide_fixed=True: display:none 으로 완전 제거 (sticky CTA 가 본문을 가리는 경우)
     2) lazy-load 트리거 (페이지 하단까지 한 번 스크롤)
     3) 최상단으로 복귀 후 `full_page=True` 로 캡처
-       — viewport 를 키우면 모바일 reflow 로 인해 페이지가 무한히 늘어나는
-       문제(빈 슬라이스 생성)가 있어 viewport-resize 방식은 폐기.
     """
     page.wait_for_timeout(300)
     page.evaluate("() => window.scrollTo(0, 0)")
     page.wait_for_timeout(200)
 
-    # fixed/sticky → absolute
-    page.evaluate("""() => {
-        document.querySelectorAll('*').forEach(el => {
-            const cs = getComputedStyle(el);
-            if (cs.position === 'fixed' || cs.position === 'sticky') {
-                el.style.setProperty('position', 'absolute', 'important');
-            }
-        });
-    }""")
+    # fixed/sticky 처리
+    if hide_fixed:
+        page.evaluate("""() => {
+            document.querySelectorAll('*').forEach(el => {
+                const cs = getComputedStyle(el);
+                if (cs.position === 'fixed' || cs.position === 'sticky') {
+                    el.style.setProperty('display', 'none', 'important');
+                }
+            });
+        }""")
+    else:
+        page.evaluate("""() => {
+            document.querySelectorAll('*').forEach(el => {
+                const cs = getComputedStyle(el);
+                if (cs.position === 'fixed' || cs.position === 'sticky') {
+                    el.style.setProperty('position', 'absolute', 'important');
+                }
+            });
+        }""")
     page.wait_for_timeout(200)
 
     # lazy-load 트리거: 페이지 끝까지 스크롤 → 이미지 로드 대기 → 다시 최상단
@@ -337,36 +350,64 @@ def capture_search_onebox(url: str, work: Path, is_mobile: bool = False) -> dict
                   .filter(img => !img.complete)
                   .map(img => new Promise(res => {
                     img.onload = img.onerror = res;
-                    setTimeout(res, 2500); // 개별 이미지 max 2.5초
+                    setTimeout(res, 2500);
                   }));
                 await Promise.race([
                   Promise.all(promises),
-                  new Promise(res => setTimeout(res, 3000)) // 전체 max 3초
+                  new Promise(res => setTimeout(res, 3000))
                 ]);
             }""")
         except Exception:
             pass
 
-        # ★ OneBox 캡처 잘림 보완: 페이지 상단의 fixed/sticky 검색바/카테고리탭이
-        # OneBox 영역에 겹쳐 캡처에 들어가는 문제 회피.
-        # OneBox 자신과 그 자손은 그대로 두고, 그 외 fixed/sticky 만 숨김.
+        # ★ fixed/sticky 페이지 헤더(검색바/카테고리탭) 를 absolute 로 변환:
+        # 페이지 흐름에 자연스럽게 박혀 OneBox 위쪽에 자리잡게 된다.
+        # OneBox 자신/자손은 보존 (내부 sticky 가 있더라도 자체 디자인이므로).
         page.evaluate(f"""() => {{
             const target = document.querySelector({SEARCH_ONEBOX_SELECTOR!r});
-            if (!target) return;
             document.querySelectorAll('*').forEach(el => {{
-                if (el === target || target.contains(el)) return;
+                if (target && (el === target || target.contains(el))) return;
                 const cs = getComputedStyle(el);
                 if (cs.position === 'fixed' || cs.position === 'sticky') {{
-                    el.style.setProperty('visibility', 'hidden', 'important');
+                    el.style.setProperty('position', 'absolute', 'important');
                 }}
             }});
         }}""")
-        # 숨김 처리 후 target 재스크롤 (페이지 헤더가 사라지면 위치가 약간 달라질 수 있음)
-        target.scroll_into_view_if_needed()
-        page.wait_for_timeout(300)
+        # 최상단 보장 + 이미지 재로드 대기
+        page.evaluate("() => window.scrollTo(0, 0)")
+        page.wait_for_timeout(400)
+        try:
+            page.evaluate("""async () => {
+                await Promise.race([
+                  Promise.all(Array.from(document.images).filter(i => !i.complete)
+                    .map(i => new Promise(r => { i.onload = i.onerror = r; setTimeout(r, 2000); }))),
+                  new Promise(r => setTimeout(r, 2500))
+                ]);
+            }""")
+        except Exception:
+            pass
+        page.wait_for_timeout(200)
 
-        target.screenshot(path=str(full))
+        # 페이지 전체 캡처 후 OneBox bottom 까지 잘라낸다.
+        # → 검색바 + 카테고리탭 + OneBox 가 한 캡처에 자연스럽게 포함.
+        tmp_full = work / f"_{prefix}_pagefull.png"
+        page.screenshot(path=str(tmp_full), full_page=True, animations="disabled")
+
+        # target 의 페이지 좌표 (scroll=0 상태)
+        box = target.bounding_box()
+        crop_bottom = int((box["y"] if box else 0) + (box["height"] if box else 0)) + 20  # 여유 20px
         browser.close()
+
+    # PIL 로 (0, 0) ~ (W, crop_bottom) 영역 잘라내 final 로 저장
+    full_img = Image.open(tmp_full)
+    W_, H_ = full_img.size
+    crop_bottom = max(100, min(crop_bottom, H_))
+    cropped = full_img.crop((0, 0, W_, crop_bottom))
+    cropped.save(full, "PNG", optimize=True)
+    try:
+        tmp_full.unlink()
+    except Exception:
+        pass
 
     parts = _split_image_safely(full, work, prefix=f"{prefix}_part", n_parts=2)
     _log(f"capture_search_onebox[{'MO' if is_mobile else 'PC'}]: done ({int(_time_mod.time()-t0)}s)")
@@ -415,7 +456,9 @@ def capture_landing(url: str, work: Path, is_mobile: bool = False) -> dict:
         page.goto(url, wait_until="domcontentloaded", timeout=30000)
         _log(f"  landing[{'MO' if is_mobile else 'PC'}]: goto returned")
         page.wait_for_timeout(1500)
-        height = _capture_tall(page, full, vp[0])
+        # 랜딩 페이지의 sticky CTA(간편신청/온라인신청)가 본문을 가리지 않게
+        # fixed/sticky 를 완전 제거하고 캡처
+        height = _capture_tall(page, full, vp[0], hide_fixed=True)
         _log(f"  landing[{'MO' if is_mobile else 'PC'}]: captured (H={height})")
         ctx.close()
         browser.close()
@@ -428,54 +471,64 @@ def capture_landing(url: str, work: Path, is_mobile: bool = False) -> dict:
 def _split_image_safely(
     img_path: Path, out_dir: Path, prefix: str, n_parts: int = 2,
 ) -> List[Path]:
-    """이미지를 n_parts 등분하되, 텍스트 잘림 방지를 위해
-    배경 단색 가로 띠(요소 간 공백) 위치를 분할점으로 사용.
+    """이미지를 n_parts 등분하되, 콘텐츠(텍스트/카드 이미지) 안에서
+    잘리지 않도록 페이지 배경의 가로 단색 띠 위치를 분할점으로 사용.
 
-    알고리즘:
-      1) grayscale 변환 후 각 row 의 표준편차(std) 계산.
-         - std 가 매우 낮은 row = 그 라인 전체가 단색 = 텍스트/그래픽 없음
-      2) 목표 분할점 (전체 높이 × i/n) 의 ±15% 구간 내에서
-         std 가 가장 낮은(연속으로 낮은) row 들의 중심을 분할점으로.
-      3) 적절한 단색 구간이 없으면 fallback 으로 목표 분할점 그대로 사용.
+    분할 후보 조건 (모두 만족해야 함):
+      A. row 의 표준편차가 매우 낮다 (단색에 가까운 row).
+      B. row 의 평균 색이 이미지 상단(=페이지 배경)에 가깝다.
+         → 카드 이미지 내부의 단조로운 영역은 배경색이 아니므로 제외됨.
+      C. 그런 row 가 연속으로 ≥ 6px 두께 (얇은 노이즈 제외).
+
+    조건을 만족하는 후보 중 목표 분할점(target_y)에 가장 가까운 띠 중심을 분할점으로.
+    후보가 전혀 없으면 std 만 보고 가장 낮은 row 로 fallback.
     """
     img = Image.open(img_path).convert("RGB")
     W, H = img.size
-    gray = np.array(img.convert("L"), dtype=np.float32)
-    row_std = gray.std(axis=1)  # 각 row 의 표준편차 (W 픽셀에 대한)
+    rgb = np.array(img, dtype=np.float32)              # (H, W, 3)
+    gray = rgb.mean(axis=2)                            # (H, W)
+    row_std = gray.std(axis=1)                         # (H,)
+    row_color = rgb.mean(axis=1)                       # (H, 3) row 별 평균 색
+
+    # 배경색 추정: 상단 5~10px 의 평균 색 (페이지 헤더가 아니라 가장 위)
+    bg = rgb[: min(10, H)].mean(axis=(0, 1))            # (3,)
+    row_bg_dist = np.abs(row_color - bg).sum(axis=1)   # (H,)  배경과의 색 거리
+
+    STD_THRESHOLD = 3.0       # row 가 단색에 가까운지
+    BG_DIST_THRESHOLD = 18.0  # row 의 색이 배경에 가까운지 (RGB 합 거리)
+    MIN_BAND_THICKNESS = 6    # 띠 두께 최소치
 
     parts: List[Path] = []
     last_top = 0
     for i in range(n_parts - 1):
         target_y = int(H * (i + 1) / n_parts)
-        # 분할 후보 범위 (이미지 중앙 근처)
         window = int(H * 0.15)
         s = max(last_top + 80, target_y - window)
         e = min(H - 80, target_y + window)
-        if e <= s:
-            split_y = target_y
-        else:
-            stds = row_std[s:e]
-            # 단색에 가까운 row 들 (절대 임계값 + 상위 분위수 보정)
-            threshold = max(stds.min() + 1.5, np.percentile(stds, 15))
-            quiet = np.where(stds <= threshold)[0]
-            if len(quiet) == 0:
-                split_y = target_y
-            else:
-                # 연속된 단색 구간들 중 target_y 에 가장 가까운 구간의 중심
-                # 그룹핑
+
+        split_y = target_y
+        if e > s:
+            quiet_mask = (
+                (row_std[s:e] < STD_THRESHOLD)
+                & (row_bg_dist[s:e] < BG_DIST_THRESHOLD)
+            )
+            quiet_idx = np.where(quiet_mask)[0]
+            if len(quiet_idx) > 0:
+                # 연속 그룹핑
                 groups = []
-                cur = [quiet[0]]
-                for v in quiet[1:]:
+                cur = [quiet_idx[0]]
+                for v in quiet_idx[1:]:
                     if v - cur[-1] <= 2:
                         cur.append(v)
                     else:
                         groups.append(cur)
                         cur = [v]
                 groups.append(cur)
-                # 각 그룹의 중심 y (이미지 좌표)
-                centers = [s + (g[0] + g[-1]) // 2 for g in groups]
-                widths = [len(g) for g in groups]
-                # target 과의 거리 + 두께(thicker = 더 안전한 공백) 가중 score
+                # 충분히 두꺼운 띠만
+                thick = [g for g in groups if len(g) >= MIN_BAND_THICKNESS]
+                use = thick if thick else groups
+                centers = [s + (g[0] + g[-1]) // 2 for g in use]
+                widths = [len(g) for g in use]
                 best_idx = int(
                     np.argmin([abs(c - target_y) - widths[k] * 0.5 for k, c in enumerate(centers)])
                 )
@@ -487,7 +540,6 @@ def _split_image_safely(
         parts.append(p)
         last_top = split_y
 
-    # 마지막 조각
     crop = img.crop((0, last_top, W, H))
     p = out_dir / f"{prefix}_{n_parts:02d}.png"
     crop.save(p, "PNG", optimize=True)
