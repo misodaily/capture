@@ -84,11 +84,11 @@ html, body {
 
 /* ===== Layout ===== */
 .layout {
-  max-width: 1280px;
+  max-width: 1320px;
   margin: 8px auto 32px;
   padding: 0 32px;
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(0, 2.2fr) minmax(260px, 1fr);
   gap: 24px;
   align-items: start;
 }
@@ -128,9 +128,9 @@ html, body {
   gap: 18px;
 }
 .field { display: flex; flex-direction: column; gap: 8px; }
-.field label { display: flex; align-items: baseline; gap: 10px; }
-.lbl  { font-size: 13px; font-weight: 600; color: var(--text); }
-.hint { font-size: 12px; color: var(--text-dim); font-weight: 400; }
+.field label { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.lbl  { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.hint { font-size: 12px; color: var(--text-dim); font-weight: 400; min-width: 0; }
 
 .input-row { display: flex; gap: 8px; }
 .input-row input, .field > input {
@@ -159,6 +159,107 @@ input[type="text"]::placeholder, input[type="url"]::placeholder {
 }
 
 .actions { display: flex; gap: 10px; margin-top: 4px; }
+
+/* ===== Device groups (PC URL 모음 / MO URL 모음) ===== */
+.device-groups {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+@media (max-width: 720px) {
+  .device-groups { grid-template-columns: 1fr; }
+}
+
+.device-card {
+  background: #fafbfd;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: border-color .15s, background .15s;
+}
+.device-card:focus-within {
+  border-color: #c7d2fe;
+  background: white;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, .06);
+}
+.device-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid #eef0f5;
+  background: white;
+}
+.device-tag {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 6px;
+  letter-spacing: .5px;
+  color: white;
+}
+.device-tag.pc {
+  background: linear-gradient(135deg, #2462e6 0%, #1d4ed8 100%);
+}
+.device-tag.mo {
+  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+}
+.device-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.device-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+.device-body {
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.req {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--danger);
+  margin-left: 4px;
+}
+.opt {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  background: #f1f5f9;
+  padding: 1px 6px;
+  border-radius: 100px;
+  margin-left: 4px;
+}
+.field-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--primary-bg);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--primary);
+  line-height: 1.4;
+}
+.info-dot {
+  flex-shrink: 0;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700;
+  font-size: 10px;
+  font-style: italic;
+  font-family: Georgia, serif;
+  margin-top: 1px;
+}
 
 /* Optional block (검색결과 추가 캡처) */
 .optional-block {

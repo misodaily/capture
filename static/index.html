@@ -32,38 +32,30 @@
       </div>
 
       <form id="genForm" autocomplete="off">
-        <div class="field">
-          <label>
-            <span class="lbl">PC URL</span>
-            <span class="hint">card-search.naver.com/item?cardAdId=...</span>
-          </label>
-          <div class="input-row">
-            <input type="url" id="pcUrl" name="pc_url" placeholder="https://card-search.naver.com/item?cardAdId=..." required />
-            <button type="button" class="btn-ghost" data-paste="pcUrl" title="클립보드 붙여넣기">붙여넣기</button>
-          </div>
-        </div>
 
-        <div class="field">
-          <label>
-            <span class="lbl">MO URL</span>
-            <span class="hint">m-card-search.naver.com/item?cardAdId=...</span>
-          </label>
-          <div class="input-row">
-            <input type="url" id="moUrl" name="mo_url" placeholder="https://m-card-search.naver.com/item?cardAdId=..." required />
-            <button type="button" class="btn-ghost" data-paste="moUrl" title="클립보드 붙여넣기">붙여넣기</button>
-          </div>
-        </div>
+        <div class="device-groups">
 
-        <details class="optional-block" id="extraBlock">
-          <summary>추가 슬라이드 (선택) <span class="opt-tag">검색 OneBox · 안내 페이지</span></summary>
-          <div class="optional-body">
-            <p class="opt-desc">필요한 URL 만 입력하면 해당 슬라이드가 추가됩니다. <b>검색결과 OneBox</b> 는 각 디바이스 섹션 <b>맨 앞</b>에, <b>안내 페이지</b> 는 각 디바이스 섹션 <b>맨 끝</b>에 배치됩니다.</p>
-
-            <div class="sub-section">
-              <div class="sub-title">검색결과 OneBox (텍스트 안 잘리게 2장 분할)</div>
+          <!-- PC URL 모음 -->
+          <section class="device-card">
+            <header class="device-head">
+              <span class="device-tag pc">PC</span>
+              <span class="device-title">PC URL 모음</span>
+              <span class="device-sub">상세 · 검색결과 · 안내 페이지</span>
+            </header>
+            <div class="device-body">
               <div class="field">
                 <label>
-                  <span class="lbl">PC 검색결과 URL</span>
+                  <span class="lbl">카드 상세 URL <span class="req">*</span></span>
+                  <span class="hint">card-search.naver.com/item?cardAdId=...</span>
+                </label>
+                <div class="input-row">
+                  <input type="url" id="pcUrl" name="pc_url" placeholder="https://card-search.naver.com/item?cardAdId=..." required />
+                  <button type="button" class="btn-ghost" data-paste="pcUrl" title="클립보드 붙여넣기">붙여넣기</button>
+                </div>
+              </div>
+              <div class="field">
+                <label>
+                  <span class="lbl">검색결과 URL <span class="opt">선택</span></span>
                   <span class="hint">search.naver.com/search.naver?query=...</span>
                 </label>
                 <div class="input-row">
@@ -73,22 +65,8 @@
               </div>
               <div class="field">
                 <label>
-                  <span class="lbl">MO 검색결과 URL</span>
-                  <span class="hint">m.search.naver.com/search.naver?query=...</span>
-                </label>
-                <div class="input-row">
-                  <input type="url" id="searchMoUrl" name="search_mo_url" placeholder="https://m.search.naver.com/search.naver?query=..." />
-                  <button type="button" class="btn-ghost" data-paste="searchMoUrl" title="클립보드 붙여넣기">붙여넣기</button>
-                </div>
-              </div>
-            </div>
-
-            <div class="sub-section">
-              <div class="sub-title">신한카드 안내 페이지 (PC/MO 동일 URL → 디바이스별 캡처)</div>
-              <div class="field">
-                <label>
-                  <span class="lbl">안내 페이지 URL</span>
-                  <span class="hint">예: shinhancard.com/pconts/.../1188285_2205.html</span>
+                  <span class="lbl">안내 페이지 URL <span class="opt">선택</span></span>
+                  <span class="hint">MO 캡처에도 자동 사용</span>
                 </label>
                 <div class="input-row">
                   <input type="url" id="landingUrl" name="landing_url" placeholder="https://www.shinhancard.com/..." />
@@ -96,8 +74,44 @@
                 </div>
               </div>
             </div>
-          </div>
-        </details>
+          </section>
+
+          <!-- MO URL 모음 -->
+          <section class="device-card">
+            <header class="device-head">
+              <span class="device-tag mo">MO</span>
+              <span class="device-title">MO URL 모음</span>
+              <span class="device-sub">상세 · 검색결과</span>
+            </header>
+            <div class="device-body">
+              <div class="field">
+                <label>
+                  <span class="lbl">카드 상세 URL <span class="req">*</span></span>
+                  <span class="hint">m-card-search.naver.com/item?cardAdId=...</span>
+                </label>
+                <div class="input-row">
+                  <input type="url" id="moUrl" name="mo_url" placeholder="https://m-card-search.naver.com/item?cardAdId=..." required />
+                  <button type="button" class="btn-ghost" data-paste="moUrl" title="클립보드 붙여넣기">붙여넣기</button>
+                </div>
+              </div>
+              <div class="field">
+                <label>
+                  <span class="lbl">검색결과 URL <span class="opt">선택</span></span>
+                  <span class="hint">m.search.naver.com/search.naver?query=...</span>
+                </label>
+                <div class="input-row">
+                  <input type="url" id="searchMoUrl" name="search_mo_url" placeholder="https://m.search.naver.com/search.naver?query=..." />
+                  <button type="button" class="btn-ghost" data-paste="searchMoUrl" title="클립보드 붙여넣기">붙여넣기</button>
+                </div>
+              </div>
+              <div class="field-info">
+                <span class="info-dot">i</span>
+                <span>안내 페이지는 PC 그룹에 입력하면 MO 도 자동 캡처됩니다.</span>
+              </div>
+            </div>
+          </section>
+
+        </div>
 
         <div class="field">
           <label>

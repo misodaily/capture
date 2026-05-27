@@ -206,6 +206,7 @@ def capture_pc(url: str, work: Path) -> dict:
         ctx = browser.new_context(
             viewport={"width": PC_VIEWPORT[0], "height": PC_VIEWPORT[1]},
             device_scale_factor=1,
+            ignore_https_errors=True,
         )
         page = ctx.new_page()
         page.goto(url, wait_until="networkidle", timeout=60000)
@@ -245,6 +246,7 @@ def capture_mo(url: str, work: Path) -> dict:
             viewport={"width": MO_VIEWPORT[0], "height": MO_VIEWPORT[1]},
             user_agent=MO_USER_AGENT,
             is_mobile=True, has_touch=True, device_scale_factor=1,
+            ignore_https_errors=True,
         )
         page = ctx.new_page()
         page.goto(url, wait_until="networkidle", timeout=60000)
@@ -295,12 +297,14 @@ def capture_search_onebox(url: str, work: Path, is_mobile: bool = False) -> dict
             viewport={"width": vp[0], "height": vp[1]},
             user_agent=MO_USER_AGENT,
             is_mobile=True, has_touch=True, device_scale_factor=1,
+            ignore_https_errors=True,
         )
     else:
         vp = SEARCH_PC_VIEWPORT
         ctx_kw = dict(
             viewport={"width": vp[0], "height": vp[1]},
             device_scale_factor=1,
+            ignore_https_errors=True,
         )
 
     with sync_playwright() as p:
@@ -342,7 +346,24 @@ def capture_search_onebox(url: str, work: Path, is_mobile: bool = False) -> dict
             }""")
         except Exception:
             pass
-        page.wait_for_timeout(200)
+
+        # ★ OneBox 캡처 잘림 보완: 페이지 상단의 fixed/sticky 검색바/카테고리탭이
+        # OneBox 영역에 겹쳐 캡처에 들어가는 문제 회피.
+        # OneBox 자신과 그 자손은 그대로 두고, 그 외 fixed/sticky 만 숨김.
+        page.evaluate(f"""() => {{
+            const target = document.querySelector({SEARCH_ONEBOX_SELECTOR!r});
+            if (!target) return;
+            document.querySelectorAll('*').forEach(el => {{
+                if (el === target || target.contains(el)) return;
+                const cs = getComputedStyle(el);
+                if (cs.position === 'fixed' || cs.position === 'sticky') {{
+                    el.style.setProperty('visibility', 'hidden', 'important');
+                }}
+            }});
+        }}""")
+        # 숨김 처리 후 target 재스크롤 (페이지 헤더가 사라지면 위치가 약간 달라질 수 있음)
+        target.scroll_into_view_if_needed()
+        page.wait_for_timeout(300)
 
         target.screenshot(path=str(full))
         browser.close()
@@ -372,6 +393,7 @@ def capture_landing(url: str, work: Path, is_mobile: bool = False) -> dict:
             viewport={"width": vp[0], "height": vp[1]},
             user_agent=MO_USER_AGENT,
             is_mobile=True, has_touch=True, device_scale_factor=1,
+            ignore_https_errors=True,
         )
         slice_h = MO_VIEWPORT[1]
         overlap = MO_OVERLAP
@@ -380,6 +402,7 @@ def capture_landing(url: str, work: Path, is_mobile: bool = False) -> dict:
         ctx_kw = dict(
             viewport={"width": vp[0], "height": vp[1]},
             device_scale_factor=1,
+            ignore_https_errors=True,
         )
         slice_h = PC_SCREENSHOT_H
         overlap = PC_OVERLAP
