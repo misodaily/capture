@@ -7,6 +7,9 @@ const els = {
   form: $('genForm'),
   pcUrl: $('pcUrl'),
   moUrl: $('moUrl'),
+  searchPcUrl: $('searchPcUrl'),
+  searchMoUrl: $('searchMoUrl'),
+  landingUrl: $('landingUrl'),
   cardName: $('cardName'),
   submitBtn: $('submitBtn'),
   clearBtn: $('clearBtn'),
@@ -94,6 +97,9 @@ els.form.addEventListener('submit', async (e) => {
 async function startGeneration() {
   const pc_url = els.pcUrl.value.trim();
   const mo_url = els.moUrl.value.trim();
+  const search_pc_url = els.searchPcUrl ? els.searchPcUrl.value.trim() : '';
+  const search_mo_url = els.searchMoUrl ? els.searchMoUrl.value.trim() : '';
+  const landing_url = els.landingUrl ? els.landingUrl.value.trim() : '';
   const card_name = els.cardName.value.trim();
 
   if (!pc_url || !mo_url) {
@@ -106,6 +112,18 @@ async function startGeneration() {
   }
   if (!mo_url.includes('m-card-search.naver.com')) {
     toast('MO URL 형식이 올바르지 않습니다 (m-card-search.naver.com).', 'error');
+    return;
+  }
+  if (search_pc_url && !search_pc_url.includes('search.naver.com')) {
+    toast('PC 검색결과 URL 형식이 올바르지 않습니다 (search.naver.com).', 'error');
+    return;
+  }
+  if (search_mo_url && !search_mo_url.includes('m.search.naver.com')) {
+    toast('MO 검색결과 URL 형식이 올바르지 않습니다 (m.search.naver.com).', 'error');
+    return;
+  }
+  if (landing_url && !/^https?:\/\//i.test(landing_url)) {
+    toast('안내 페이지 URL 은 http:// 또는 https:// 로 시작해야 합니다.', 'error');
     return;
   }
 
@@ -121,7 +139,7 @@ async function startGeneration() {
     const r = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pc_url, mo_url, card_name }),
+      body: JSON.stringify({ pc_url, mo_url, search_pc_url, search_mo_url, landing_url, card_name }),
     });
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
@@ -209,9 +227,11 @@ function showResult(j) {
   els.resultSub.textContent = j.file_name || '';
   const meta = [];
   if (j.pc_slides !== undefined) meta.push(`PC ${j.pc_slides}장`);
+  if (j.search_pc_slides) meta.push(`PC 검색 ${j.search_pc_slides}장`);
+  if (j.landing_pc_slides) meta.push(`PC 안내 ${j.landing_pc_slides}장`);
   if (j.mo_slides !== undefined) meta.push(`MO ${j.mo_slides}장`);
-  if (j.pc_height) meta.push(`PC 페이지 ${j.pc_height}px`);
-  if (j.mo_height) meta.push(`MO 페이지 ${j.mo_height}px`);
+  if (j.search_mo_slides) meta.push(`MO 검색 ${j.search_mo_slides}장`);
+  if (j.landing_mo_slides) meta.push(`MO 안내 ${j.landing_mo_slides}장`);
   els.resultMeta.textContent = meta.join(' · ');
   els.downloadBtn.href = `/api/download/${currentJobId}`;
   toast('생성 완료!', 'success');
@@ -259,6 +279,9 @@ els.retryBtn.addEventListener('click', () => {
 els.clearBtn.addEventListener('click', () => {
   els.pcUrl.value = '';
   els.moUrl.value = '';
+  if (els.searchPcUrl) els.searchPcUrl.value = '';
+  if (els.searchMoUrl) els.searchMoUrl.value = '';
+  if (els.landingUrl) els.landingUrl.value = '';
   els.cardName.value = '';
   els.cardName.placeholder = '예: 신한카드 Deep Once';
   els.progressPanel.hidden = true;

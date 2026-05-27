@@ -160,6 +160,81 @@ input[type="text"]::placeholder, input[type="url"]::placeholder {
 
 .actions { display: flex; gap: 10px; margin-top: 4px; }
 
+/* Optional block (검색결과 추가 캡처) */
+.optional-block {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: #fafbfd;
+  padding: 0;
+  transition: border-color .15s, background .15s;
+}
+.optional-block[open] {
+  border-color: #c7d2fe;
+  background: #f8faff;
+}
+.optional-block > summary {
+  cursor: pointer;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+.optional-block > summary::-webkit-details-marker { display: none; }
+.optional-block > summary::before {
+  content: '+';
+  display: inline-flex;
+  width: 18px; height: 18px;
+  align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: white;
+  border: 1px solid var(--border);
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1;
+}
+.optional-block[open] > summary::before { content: '−'; }
+.opt-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 100px;
+  background: var(--primary-bg);
+  color: var(--primary);
+  margin-left: auto;
+}
+.opt-desc {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.optional-body {
+  padding: 0 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.sub-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+.sub-section + .sub-section { border-top: 1px dashed #e6e9f0; padding-top: 14px; }
+.sub-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: .2px;
+  text-transform: none;
+}
+
 /* Buttons */
 .btn-primary, .btn-secondary, .btn-ghost {
   display: inline-flex;

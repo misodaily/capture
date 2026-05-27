@@ -24,11 +24,24 @@ import math
 import os
 import sys
 import tempfile
+import time as _time_mod
 from pathlib import Path
 from typing import List
 
+# 모든 print 를 즉시 flush (백그라운드 출력 확인용)
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
+
+
+def _log(msg: str) -> None:
+    print(f"[{_time_mod.strftime('%H:%M:%S')}] {msg}", flush=True)
+
 from playwright.sync_api import sync_playwright, Page
 from PIL import Image
+import numpy as np
 from pptx import Presentation
 from pptx.util import Emu, Pt, Inches
 from pptx.dml.color import RGBColor
@@ -51,6 +64,17 @@ MO_USER_AGENT = (
     "Mozilla/5.0 (Linux; Android 13; SM-S918N) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 )
+
+# 네이버 검색결과 카드 OneBox 컨테이너 셀렉터 (PC/MO 동일)
+SEARCH_ONEBOX_SELECTOR = "div.sp_cardsearch"
+SEARCH_PC_VIEWPORT = (1280, 900)
+SEARCH_MO_VIEWPORT = (412, 915)
+HEADER_TEXT_RIGHT_SEARCH_PC = "네이버 신용카드 검색결과_PC"
+HEADER_TEXT_RIGHT_SEARCH_MO = "네이버 신용카드 검색결과_MO"
+
+# 신한카드 자체 안내 페이지 (PC/MO 동일 URL → 디바이스별로 다른 레이아웃)
+HEADER_TEXT_RIGHT_LANDING_PC = "신한카드 안내 페이지_PC"
+HEADER_TEXT_RIGHT_LANDING_MO = "신한카드 안내 페이지_MO"
 
 
 # ---- Web capture ----------------------------------------------------------
@@ -174,6 +198,8 @@ def capture_pc(url: str, work: Path) -> dict:
     """PC 캡처: 1920×1080 뷰포트로 풀페이지 캡처 → 989px 단위 슬라이스 N장."""
     work.mkdir(parents=True, exist_ok=True)
     pc_full = work / "pc_full.png"
+    _log("capture_pc: start")
+    t0 = _time_mod.time()
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -200,6 +226,7 @@ def capture_pc(url: str, work: Path) -> dict:
         browser.close()
 
     slides = _slice_full_page(str(pc_full), PC_SCREENSHOT_H, PC_OVERLAP, work, "pc_slide")
+    _log(f"capture_pc: done ({int(_time_mod.time()-t0)}s, {len(slides)} slides)")
     return {"slides": slides, "full": pc_full, "height": height}
 
 
@@ -209,6 +236,8 @@ def capture_mo(url: str, work: Path) -> dict:
     """
     work.mkdir(parents=True, exist_ok=True)
     mo_full = work / "mo_full.png"
+    _log("capture_mo: start")
+    t0 = _time_mod.time()
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -235,7 +264,212 @@ def capture_mo(url: str, work: Path) -> dict:
         browser.close()
 
     slides = _slice_full_page(str(mo_full), MO_VIEWPORT[1], MO_OVERLAP, work, "mo_slide")
+    _log(f"capture_mo: done ({int(_time_mod.time()-t0)}s, {len(slides)} slides)")
     return {"slides": slides, "full": mo_full, "height": height}
+
+
+# ---- 검색결과 OneBox 캡처 -------------------------------------------------
+
+def capture_search_onebox(url: str, work: Path, is_mobile: bool = False) -> dict:
+    """네이버 검색결과 페이지의 신용카드 OneBox 영역(div.sp_cardsearch)을
+    통째로 캡처해 텍스트가 잘리지 않는 위치에서 2장으로 분할한다.
+
+    - 카드 정보 + 연체이자율 + 법적고지 + "최종 업데이트 / 상품정보 오류신고"
+      까지 한 컨테이너 안에 모두 있어 한 번에 캡처 가능.
+    - 캡처본을 2등분하되, 단색 가로 띠(요소 간 공백)를 찾아 거기서 자르므로
+      텍스트가 가운데에서 끊기지 않는다.
+
+    Args:
+        is_mobile: True 면 m.search.naver.com 모바일 검색결과로 가정해
+                   모바일 UA/뷰포트 사용. False 면 PC.
+    """
+    work.mkdir(parents=True, exist_ok=True)
+    prefix = "search_mo" if is_mobile else "search_pc"
+    full = work / f"{prefix}_full.png"
+    _log(f"capture_search_onebox[{'MO' if is_mobile else 'PC'}]: start")
+    t0 = _time_mod.time()
+
+    if is_mobile:
+        vp = SEARCH_MO_VIEWPORT
+        ctx_kw = dict(
+            viewport={"width": vp[0], "height": vp[1]},
+            user_agent=MO_USER_AGENT,
+            is_mobile=True, has_touch=True, device_scale_factor=1,
+        )
+    else:
+        vp = SEARCH_PC_VIEWPORT
+        ctx_kw = dict(
+            viewport={"width": vp[0], "height": vp[1]},
+            device_scale_factor=1,
+        )
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        ctx = browser.new_context(**ctx_kw)
+        page = ctx.new_page()
+        # 검색결과는 광고/트래커가 계속 떠서 networkidle 도 안 끝남
+        # → commit (HTTP 응답 받자마자 진행) 후 OneBox 가 나타날 때까지만 짧게 대기
+        _log(f"  search[{'MO' if is_mobile else 'PC'}]: goto...")
+        page.goto(url, wait_until="commit", timeout=20000)
+        _log(f"  search[{'MO' if is_mobile else 'PC'}]: goto returned, waiting for OneBox...")
+
+        target = page.locator(SEARCH_ONEBOX_SELECTOR).first
+        try:
+            target.wait_for(state="visible", timeout=15000)
+        except Exception:
+            browser.close()
+            raise RuntimeError(
+                f"검색결과 페이지에서 카드 OneBox({SEARCH_ONEBOX_SELECTOR})를 찾지 못했습니다. "
+                f"URL 이 카드명 검색결과({'모바일' if is_mobile else 'PC'})인지 확인해 주세요."
+            )
+        _log(f"  search[{'MO' if is_mobile else 'PC'}]: OneBox visible")
+
+        target.scroll_into_view_if_needed()
+        page.wait_for_timeout(400)
+        # 이미지 로드 대기는 max 3초 (영원히 안 끝나는 트래커 이미지 회피)
+        try:
+            page.evaluate("""async () => {
+                const promises = Array.from(document.images)
+                  .filter(img => !img.complete)
+                  .map(img => new Promise(res => {
+                    img.onload = img.onerror = res;
+                    setTimeout(res, 2500); // 개별 이미지 max 2.5초
+                  }));
+                await Promise.race([
+                  Promise.all(promises),
+                  new Promise(res => setTimeout(res, 3000)) // 전체 max 3초
+                ]);
+            }""")
+        except Exception:
+            pass
+        page.wait_for_timeout(200)
+
+        target.screenshot(path=str(full))
+        browser.close()
+
+    parts = _split_image_safely(full, work, prefix=f"{prefix}_part", n_parts=2)
+    _log(f"capture_search_onebox[{'MO' if is_mobile else 'PC'}]: done ({int(_time_mod.time()-t0)}s)")
+    return {"slides": parts, "full": full, "is_mobile": is_mobile}
+
+
+# ---- 신한카드 자체 안내 페이지 캡처 ---------------------------------------
+
+def capture_landing(url: str, work: Path, is_mobile: bool = False) -> dict:
+    """신한카드 자체 카드 안내 페이지(shinhancard.com 등)를 풀페이지 캡처.
+    - PC/MO 동일 URL 을 받지만 디바이스별 viewport/UA 로 따로 캡처.
+    - 본문 캡처와 동일하게 풀폭 슬라이스 (PC 989px / MO 874px).
+    - fixed/sticky 변환은 `_capture_tall` 내부에서 처리.
+    """
+    work.mkdir(parents=True, exist_ok=True)
+    prefix = "landing_mo" if is_mobile else "landing_pc"
+    full = work / f"{prefix}_full.png"
+    _log(f"capture_landing[{'MO' if is_mobile else 'PC'}]: start")
+    t0 = _time_mod.time()
+
+    if is_mobile:
+        vp = MO_VIEWPORT
+        ctx_kw = dict(
+            viewport={"width": vp[0], "height": vp[1]},
+            user_agent=MO_USER_AGENT,
+            is_mobile=True, has_touch=True, device_scale_factor=1,
+        )
+        slice_h = MO_VIEWPORT[1]
+        overlap = MO_OVERLAP
+    else:
+        vp = PC_VIEWPORT
+        ctx_kw = dict(
+            viewport={"width": vp[0], "height": vp[1]},
+            device_scale_factor=1,
+        )
+        slice_h = PC_SCREENSHOT_H
+        overlap = PC_OVERLAP
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        ctx = browser.new_context(**ctx_kw)
+        page = ctx.new_page()
+        _log(f"  landing[{'MO' if is_mobile else 'PC'}]: goto...")
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        _log(f"  landing[{'MO' if is_mobile else 'PC'}]: goto returned")
+        page.wait_for_timeout(1500)
+        height = _capture_tall(page, full, vp[0])
+        _log(f"  landing[{'MO' if is_mobile else 'PC'}]: captured (H={height})")
+        ctx.close()
+        browser.close()
+
+    slides = _slice_full_page(str(full), slice_h, overlap, work, f"{prefix}_slide")
+    _log(f"capture_landing[{'MO' if is_mobile else 'PC'}]: done ({int(_time_mod.time()-t0)}s, {len(slides)} slides)")
+    return {"slides": slides, "full": full, "height": height, "is_mobile": is_mobile}
+
+
+def _split_image_safely(
+    img_path: Path, out_dir: Path, prefix: str, n_parts: int = 2,
+) -> List[Path]:
+    """이미지를 n_parts 등분하되, 텍스트 잘림 방지를 위해
+    배경 단색 가로 띠(요소 간 공백) 위치를 분할점으로 사용.
+
+    알고리즘:
+      1) grayscale 변환 후 각 row 의 표준편차(std) 계산.
+         - std 가 매우 낮은 row = 그 라인 전체가 단색 = 텍스트/그래픽 없음
+      2) 목표 분할점 (전체 높이 × i/n) 의 ±15% 구간 내에서
+         std 가 가장 낮은(연속으로 낮은) row 들의 중심을 분할점으로.
+      3) 적절한 단색 구간이 없으면 fallback 으로 목표 분할점 그대로 사용.
+    """
+    img = Image.open(img_path).convert("RGB")
+    W, H = img.size
+    gray = np.array(img.convert("L"), dtype=np.float32)
+    row_std = gray.std(axis=1)  # 각 row 의 표준편차 (W 픽셀에 대한)
+
+    parts: List[Path] = []
+    last_top = 0
+    for i in range(n_parts - 1):
+        target_y = int(H * (i + 1) / n_parts)
+        # 분할 후보 범위 (이미지 중앙 근처)
+        window = int(H * 0.15)
+        s = max(last_top + 80, target_y - window)
+        e = min(H - 80, target_y + window)
+        if e <= s:
+            split_y = target_y
+        else:
+            stds = row_std[s:e]
+            # 단색에 가까운 row 들 (절대 임계값 + 상위 분위수 보정)
+            threshold = max(stds.min() + 1.5, np.percentile(stds, 15))
+            quiet = np.where(stds <= threshold)[0]
+            if len(quiet) == 0:
+                split_y = target_y
+            else:
+                # 연속된 단색 구간들 중 target_y 에 가장 가까운 구간의 중심
+                # 그룹핑
+                groups = []
+                cur = [quiet[0]]
+                for v in quiet[1:]:
+                    if v - cur[-1] <= 2:
+                        cur.append(v)
+                    else:
+                        groups.append(cur)
+                        cur = [v]
+                groups.append(cur)
+                # 각 그룹의 중심 y (이미지 좌표)
+                centers = [s + (g[0] + g[-1]) // 2 for g in groups]
+                widths = [len(g) for g in groups]
+                # target 과의 거리 + 두께(thicker = 더 안전한 공백) 가중 score
+                best_idx = int(
+                    np.argmin([abs(c - target_y) - widths[k] * 0.5 for k, c in enumerate(centers)])
+                )
+                split_y = centers[best_idx]
+
+        crop = img.crop((0, last_top, W, split_y))
+        p = out_dir / f"{prefix}_{i + 1:02d}.png"
+        crop.save(p, "PNG", optimize=True)
+        parts.append(p)
+        last_top = split_y
+
+    # 마지막 조각
+    crop = img.crop((0, last_top, W, H))
+    p = out_dir / f"{prefix}_{n_parts:02d}.png"
+    crop.save(p, "PNG", optimize=True)
+    parts.append(p)
+    return parts
 
 
 # ---- PPT building ---------------------------------------------------------
@@ -328,30 +562,67 @@ def _add_image_grid(slide, paths: List[Path], top_emu: int = 700000):
 
 def build_pptx(
     pc: dict, mo: dict, out_path: Path,
-    card_name: str, slides_per_mo_grid: int = 5, **_ignored,
+    card_name: str,
+    search_pc: dict | None = None,
+    search_mo: dict | None = None,
+    landing_pc: dict | None = None,
+    landing_mo: dict | None = None,
+    slides_per_mo_grid: int = 5, **_ignored,
 ) -> Path:
-    """PC, MO 캡처를 PPT 로 조립.
-    - PC: 1슬라이스 = 1슬라이드 (풀폭 가운데 정렬)
-    - MO: 1슬라이드 당 5장씩 가로 그리드 정렬
+    """PC, MO (+ 선택적 검색결과, 안내페이지) 캡처를 PPT 로 조립.
+
+    슬라이드 순서:
+      [PC 검색결과 OneBox 2장]   ← search_pc
+      [PC 상세 페이지 슬라이스]
+      [PC 안내 페이지 슬라이스]  ← landing_pc (PC 섹션 맨 끝)
+      [MO 검색결과 OneBox 2장]   ← search_mo
+      [MO 상세 페이지 5장 그리드]
+      [MO 안내 페이지 5장 그리드] ← landing_mo (MO 섹션 맨 끝)
     """
     prs = Presentation()
     prs.slide_width = SLIDE_W_EMU
     prs.slide_height = SLIDE_H_EMU
     blank_layout = prs.slide_layouts[6]
 
-    # ---- PC ----
+    # ---- PC: (검색결과) → 상세 → 안내 ----
+    if search_pc and search_pc.get("slides"):
+        for slice_path in search_pc["slides"]:
+            s = prs.slides.add_slide(blank_layout)
+            _add_header(s, prs, HEADER_TEXT_RIGHT_SEARCH_PC)
+            _add_image_centered(s, slice_path, top_emu=650000)
+
     for slice_path in pc["slides"]:
         s = prs.slides.add_slide(blank_layout)
         _add_header(s, prs, HEADER_TEXT_RIGHT_PC)
         _add_image_centered(s, slice_path, top_emu=650000)
 
-    # ---- MO: 5장씩 그리드 ----
+    if landing_pc and landing_pc.get("slides"):
+        for slice_path in landing_pc["slides"]:
+            s = prs.slides.add_slide(blank_layout)
+            _add_header(s, prs, HEADER_TEXT_RIGHT_LANDING_PC)
+            _add_image_centered(s, slice_path, top_emu=650000)
+
+    # ---- MO: (검색결과) → 상세 5장 그리드 → 안내 5장 그리드 ----
+    if search_mo and search_mo.get("slides"):
+        for slice_path in search_mo["slides"]:
+            s = prs.slides.add_slide(blank_layout)
+            _add_header(s, prs, HEADER_TEXT_RIGHT_SEARCH_MO)
+            _add_image_centered(s, slice_path, top_emu=650000)
+
     mo_slices = mo["slides"]
     for i in range(0, len(mo_slices), slides_per_mo_grid):
         chunk = mo_slices[i: i + slides_per_mo_grid]
         s = prs.slides.add_slide(blank_layout)
         _add_header(s, prs, HEADER_TEXT_RIGHT_MO)
         _add_image_grid(s, chunk, top_emu=700000)
+
+    if landing_mo and landing_mo.get("slides"):
+        landing_slices = landing_mo["slides"]
+        for i in range(0, len(landing_slices), slides_per_mo_grid):
+            chunk = landing_slices[i: i + slides_per_mo_grid]
+            s = prs.slides.add_slide(blank_layout)
+            _add_header(s, prs, HEADER_TEXT_RIGHT_LANDING_MO)
+            _add_image_grid(s, chunk, top_emu=700000)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(out_path))
@@ -376,6 +647,12 @@ def main():
     ap = argparse.ArgumentParser(description="신한카드 검색광고 게재보고 PPT 자동 생성")
     ap.add_argument("--pc", default=DEFAULT_PC, help="PC card-search.naver.com/item URL")
     ap.add_argument("--mo", default=DEFAULT_MO, help="MO m-card-search.naver.com/item URL")
+    ap.add_argument("--search-pc", default=None, dest="search_pc",
+                    help="(선택) PC 검색결과 URL (search.naver.com) — 카드 OneBox 캡처")
+    ap.add_argument("--search-mo", default=None, dest="search_mo",
+                    help="(선택) MO 검색결과 URL (m.search.naver.com) — 카드 OneBox 캡처")
+    ap.add_argument("--landing", default=None,
+                    help="(선택) 신한카드 자체 안내 페이지 URL — PC/MO 둘 다 캡처")
     ap.add_argument("--card", default="신한카드 Deep Once", help="카드명 (출력 파일명/타이틀용)")
     ap.add_argument(
         "--out",
@@ -391,16 +668,35 @@ def main():
     )
     out = Path(args.out) if args.out else out_default
 
-    print(f"[1/3] PC 캡처 중... (work={work})")
+    # Playwright sync API 는 한 process 에 한 인스턴스만 가능 → 순차 실행
+    t0 = _time_mod.time()
+    print(f"[1/2] 순차 캡처 시작 (work={work})", flush=True)
     pc = capture_pc(args.pc, work / "pc")
-    print(f"      slices: {len(pc['slides'])}, page H={pc['height']}px")
-
-    print("[2/3] MO 캡처 중...")
+    print(f"      PC: {len(pc['slides'])}장 (H={pc['height']}px)", flush=True)
     mo = capture_mo(args.mo, work / "mo")
-    print(f"      slices: {len(mo['slides'])}, page H={mo['height']}px")
+    print(f"      MO: {len(mo['slides'])}장 (H={mo['height']}px)", flush=True)
 
-    print("[3/3] PPT 생성 중...")
-    p = build_pptx(pc, mo, out, args.card)
+    search_pc_data = None
+    search_mo_data = None
+    landing_pc_data = None
+    landing_mo_data = None
+    if args.search_pc:
+        search_pc_data = capture_search_onebox(args.search_pc, work / "search_pc", False)
+        print(f"      Search PC: {len(search_pc_data['slides'])}장", flush=True)
+    if args.search_mo:
+        search_mo_data = capture_search_onebox(args.search_mo, work / "search_mo", True)
+        print(f"      Search MO: {len(search_mo_data['slides'])}장", flush=True)
+    if args.landing:
+        landing_pc_data = capture_landing(args.landing, work / "landing_pc", False)
+        print(f"      Landing PC: {len(landing_pc_data['slides'])}장 (H={landing_pc_data['height']})", flush=True)
+        landing_mo_data = capture_landing(args.landing, work / "landing_mo", True)
+        print(f"      Landing MO: {len(landing_mo_data['slides'])}장 (H={landing_mo_data['height']})", flush=True)
+    print(f"      캡처 소요 {int(_time_mod.time() - t0)}s", flush=True)
+
+    print("[2/2] PPT 생성 중...", flush=True)
+    p = build_pptx(pc, mo, out, args.card,
+                   search_pc=search_pc_data, search_mo=search_mo_data,
+                   landing_pc=landing_pc_data, landing_mo=landing_mo_data)
     print(f"DONE → {p}")
     print(f"      (중간 캡처는 {work} 에 보존)")
 

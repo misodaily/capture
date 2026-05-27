@@ -91,30 +91,58 @@ def _build_out_path(card_name: str) -> Path:
     return out
 
 
-def _run_job(job_id: str, pc_url: str, mo_url: str, card_name: str) -> None:
+def _run_job(
+    job_id: str, pc_url: str, mo_url: str, card_name: str,
+    search_pc_url: str = "", search_mo_url: str = "",
+    landing_url: str = "",
+) -> None:
     work = WORK_ROOT / job_id
     work.mkdir(parents=True, exist_ok=True)
     out_path = _build_out_path(card_name)
 
     try:
-        _update(job_id, status="running", step="PC 페이지 캡처 중 (혜택 펼침 + 풀페이지)...", progress=10)
+        # Playwright sync API 는 한 process 당 한 인스턴스만 허용
+        # (두 thread 동시 진입 시 hang) → 순차 실행
+        _update(job_id, status="running", step="PC 상세 페이지 캡처 중...", progress=8)
         pc = generate_report.capture_pc(pc_url, work / "pc")
-        _update(
-            job_id,
-            step=f"PC 캡처 완료 — {len(pc['slides'])} 장 슬라이스 / 페이지 높이 {pc['height']}px",
-            progress=40,
-        )
+        _update(job_id, step=f"PC 완료 ({len(pc['slides'])}장)", progress=28)
 
-        _update(job_id, step="MO 페이지 캡처 중 (검색결과 + 상세 + 본문)...", progress=45)
+        _update(job_id, step="MO 상세 페이지 캡처 중...", progress=32)
         mo = generate_report.capture_mo(mo_url, work / "mo")
-        _update(
-            job_id,
-            step=f"MO 캡처 완료 — {len(mo['slides'])} 장 슬라이스 / 페이지 높이 {mo['height']}px",
-            progress=80,
-        )
+        _update(job_id, step=f"MO 완료 ({len(mo['slides'])}장)", progress=56)
 
-        _update(job_id, step="PPT 조립 중...", progress=88)
-        generate_report.build_pptx(pc, mo, out_path, card_name)
+        search_pc_data = None
+        if search_pc_url:
+            _update(job_id, step="PC 검색결과 OneBox 캡처 중...", progress=60)
+            search_pc_data = generate_report.capture_search_onebox(
+                search_pc_url, work / "search_pc", is_mobile=False
+            )
+
+        search_mo_data = None
+        if search_mo_url:
+            _update(job_id, step="MO 검색결과 OneBox 캡처 중...", progress=68)
+            search_mo_data = generate_report.capture_search_onebox(
+                search_mo_url, work / "search_mo", is_mobile=True
+            )
+
+        landing_pc_data = None
+        landing_mo_data = None
+        if landing_url:
+            _update(job_id, step="안내 페이지 캡처 중 (PC)...", progress=75)
+            landing_pc_data = generate_report.capture_landing(
+                landing_url, work / "landing_pc", is_mobile=False
+            )
+            _update(job_id, step="안내 페이지 캡처 중 (MO)...", progress=83)
+            landing_mo_data = generate_report.capture_landing(
+                landing_url, work / "landing_mo", is_mobile=True
+            )
+
+        _update(job_id, step="PPT 조립 중...", progress=92)
+        generate_report.build_pptx(
+            pc, mo, out_path, card_name,
+            search_pc=search_pc_data, search_mo=search_mo_data,
+            landing_pc=landing_pc_data, landing_mo=landing_mo_data,
+        )
 
         with JOBS_LOCK:
             JOBS[job_id].update({
@@ -127,6 +155,10 @@ def _run_job(job_id: str, pc_url: str, mo_url: str, card_name: str) -> None:
                 "mo_slides": len(mo["slides"]),
                 "pc_height": pc["height"],
                 "mo_height": mo["height"],
+                "search_pc_slides": len(search_pc_data["slides"]) if search_pc_data else 0,
+                "search_mo_slides": len(search_mo_data["slides"]) if search_mo_data else 0,
+                "landing_pc_slides": len(landing_pc_data["slides"]) if landing_pc_data else 0,
+                "landing_mo_slides": len(landing_mo_data["slides"]) if landing_mo_data else 0,
             })
         _push_history(JOBS[job_id])
 
@@ -156,6 +188,9 @@ def api_generate():
     data = request.get_json(force=True) or {}
     pc_url = (data.get("pc_url") or "").strip()
     mo_url = (data.get("mo_url") or "").strip()
+    search_pc_url = (data.get("search_pc_url") or "").strip()
+    search_mo_url = (data.get("search_mo_url") or "").strip()
+    landing_url = (data.get("landing_url") or "").strip()
     card_name = (data.get("card_name") or "").strip() or _extract_card_from_url(pc_url) or "신한카드"
 
     if not pc_url or not mo_url:
@@ -164,6 +199,12 @@ def api_generate():
         return jsonify({"error": "PC URL 은 card-search.naver.com 도메인이어야 합니다."}), 400
     if "m-card-search.naver.com" not in mo_url:
         return jsonify({"error": "MO URL 은 m-card-search.naver.com 도메인이어야 합니다."}), 400
+    if search_pc_url and "search.naver.com" not in search_pc_url:
+        return jsonify({"error": "PC 검색결과 URL 은 search.naver.com 도메인이어야 합니다."}), 400
+    if search_mo_url and "m.search.naver.com" not in search_mo_url:
+        return jsonify({"error": "MO 검색결과 URL 은 m.search.naver.com 도메인이어야 합니다."}), 400
+    if landing_url and not landing_url.startswith(("http://", "https://")):
+        return jsonify({"error": "안내 페이지 URL 은 http:// 또는 https:// 로 시작해야 합니다."}), 400
 
     job_id = uuid.uuid4().hex[:12]
     with JOBS_LOCK:
@@ -174,9 +215,16 @@ def api_generate():
             "card_name": card_name,
             "pc_url": pc_url,
             "mo_url": mo_url,
+            "search_pc_url": search_pc_url,
+            "search_mo_url": search_mo_url,
+            "landing_url": landing_url,
             "started_at": datetime.now().isoformat(timespec="seconds"),
         }
-    threading.Thread(target=_run_job, args=(job_id, pc_url, mo_url, card_name), daemon=True).start()
+    threading.Thread(
+        target=_run_job,
+        args=(job_id, pc_url, mo_url, card_name, search_pc_url, search_mo_url, landing_url),
+        daemon=True,
+    ).start()
     return jsonify({"job_id": job_id, "card_name": card_name})
 
 
